@@ -55,7 +55,8 @@ async function writeMarkdownFilesPromise(posts) {
 	let delay = 0;
 	const payloads = posts.flatMap((post) => {
 		const destinationPath = shared.buildPostPath(post);
-		if (checkFile(destinationPath)) {
+		shared.config.checkMarkdownFileOverwrite = false;
+		if (shared.config.checkMarkdownFileOverwrite && checkFile(destinationPath)) {
 			// already exists, don't need to save again
 			existingCount++;
 			return [];
