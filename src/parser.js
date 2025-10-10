@@ -1,25 +1,31 @@
-import chalk from 'chalk';
-import fs from 'fs';
-import * as luxon from 'luxon';
-import * as data from './data.js';
-import * as frontmatter from './frontmatter.js';
-import * as shared from './shared.js';
-import * as translator from './translator.js';
+import chalk from "chalk";
+import fs from "fs";
+import * as luxon from "luxon";
+import * as data from "./data.js";
+import * as frontmatter from "./frontmatter.js";
+import * as shared from "./shared.js";
+import * as translator from "./translator.js";
 
 export async function parseFilePromise() {
-    shared.logHeading('Parsing');
-    const content = await fs.promises.readFile(shared.config.input, 'utf8');
+    shared.logHeading("Parsing");
+    const content = await fs.promises.readFile(shared.config.input, "utf8");
     const rssData = await data.load(content);
-    const allPostData = rssData.child('channel').children('item');
+    const allPostData = rssData.child("channel").children("item");
 
     const postTypes = getPostTypes(allPostData);
     const posts = collectPosts(allPostData, postTypes);
 
     const images = [];
-    if (shared.config.saveImages === 'attached' || shared.config.saveImages === 'all') {
+    if (
+        shared.config.saveImages === "attached" ||
+        shared.config.saveImages === "all"
+    ) {
         images.push(...collectAttachedImages(allPostData));
     }
-    if (shared.config.saveImages === 'scraped' || shared.config.saveImages === 'all') {
+    if (
+        shared.config.saveImages === "scraped" ||
+        shared.config.saveImages === "all"
+    ) {
         images.push(...collectScrapedImages(allPostData, postTypes));
     }
 
@@ -31,50 +37,64 @@ export async function parseFilePromise() {
 
 function getPostTypes(allPostData) {
     // search export file for all post types minus some specific types we don't want
-    const postTypes = [...new Set(allPostData // new Set() is used to dedupe array
-        .map((postData) => postData.childValue('post_type'))
-        .filter((postType) => ![
-            'attachment',
-            'revision',
-            'nav_menu_item',
-            'custom_css',
-            'customize_changeset',
-            'oembed_cache',
-            'user_request',
-            'wp_block',
-            'wp_global_styles',
-            'wp_navigation',
-            'wp_template',
-            'wp_template_part'
-        ].includes(postType))
-    )];
+    const postTypes = [
+        ...new Set(
+            allPostData // new Set() is used to dedupe array
+                .map((postData) => postData.childValue("post_type"))
+                .filter(
+                    (postType) =>
+                        ![
+                            "attachment",
+                            "revision",
+                            "nav_menu_item",
+                            "custom_css",
+                            "customize_changeset",
+                            "oembed_cache",
+                            "user_request",
+                            "wp_block",
+                            "wp_global_styles",
+                            "wp_navigation",
+                            "wp_template",
+                            "wp_template_part",
+                        ].includes(postType)
+                )
+        ),
+    ];
 
     // change order to "post", "page", then all custom post types (alphabetically)
-    prioritizePostType(postTypes, 'page');
-    prioritizePostType(postTypes, 'post');
+    prioritizePostType(postTypes, "page");
+    prioritizePostType(postTypes, "post");
 
     return postTypes;
 }
 
 function getItemsOfType(allPostData, type) {
-    return allPostData.filter((item) => item.childValue('post_type') === type);
+    return allPostData.filter((item) => item.childValue("post_type") === type);
 }
 
 function collectPosts(allPostData, postTypes) {
     let allPosts = [];
     postTypes.forEach((postType) => {
         const postsForType = getItemsOfType(allPostData, postType)
-            .filter((postData) => postData.childValue('status') !== 'trash')
-            .filter((postData) => !(postType === 'page' && postData.childValue('post_name') === 'sample-page'))
+            .filter((postData) => postData.childValue("status") !== "trash")
+            .filter(
+                (postData) =>
+                    !(
+                        postType === "page" &&
+                        postData.childValue("post_name") === "sample-page"
+                    )
+            )
             .map((postData) => buildPost(postData));
 
         if (postsForType.length > 0) {
-            if (postType === 'post') {
+            if (postType === "post") {
                 console.log(`${postsForType.length} normal posts found.`);
-            } else if (postType === 'page') {
+            } else if (postType === "page") {
                 console.log(`${postsForType.length} pages found.`);
             } else {
-                console.log(`${postsForType.length} custom "${postType}" posts found.`);
+                console.log(
+                    `${postsForType.length} custom "${postType}" posts found.`
+                );
             }
         }
 
@@ -86,41 +106,53 @@ function collectPosts(allPostData, postTypes) {
 
 function buildPost(data) {
     const meta = getPostMeta(data);
-    const title = data.childValue('title');
+    const title = data.childValue("title");
     const coverImageId = getPostMetaValue(data, "_thumbnail_id");
-    const content_description = translator.getPostContent(data.childValue("encoded"));
-
-    let content = "\n";
-    content += `# ${title}\n`;
-    content += "\n"
-    content += `![${title}](./images/bauteil.jpg)\n`;
-    content += "\n"
-    content += "## Beschreibung\n"
-    content += "\n"
-    content += content_description;
+    const content_description = translator.getPostContent(
+        data.childValue("encoded")
+    );
 
     let example_code = undefined;
-
     if (meta["modul_accordion_0_modul_accordion_content"]) {
-        example_code = meta["modul_accordion_0_modul_accordion_content"];
-        let sectionExampleCode ="\n\n\n"
-        sectionExampleCode += "## Beispiel\n"
-        sectionExampleCode += "\n"
-        sectionExampleCode += "```c++:./examples/TEMPLATE_PARTNAME/TEMPLATE_PARTNAME.ino\n";
-        sectionExampleCode += "./examples/TEMPLATE_PARTNAME/TEMPLATE_PARTNAME.ino\n";
-        sectionExampleCode += "```\n";
-        sectionExampleCode += "\n\n"
-        content += sectionExampleCode;
+        example_code = translator.getPostContent(meta["modul_accordion_0_modul_accordion_content"]);
+        example_code = example_code.replace('```', "");
     }
-    
+
+    let sectionExampleCode = "\n\n\n";
+
+    if (!meta["modul_accordion_0_modul_accordion_content"]) {
+        sectionExampleCode += "<!--\n";
+    }
+    sectionExampleCode += "## Beispiel\n";
+    sectionExampleCode += "\n";
+    sectionExampleCode +=
+        "```c++:./examples/TEMPLATE_PARTNAME/TEMPLATE_PARTNAME.ino\n";
+    sectionExampleCode +=
+        "./examples/TEMPLATE_PARTNAME/TEMPLATE_PARTNAME.ino\n";
+    sectionExampleCode += "```\n";
+    if (!meta["modul_accordion_0_modul_accordion_content"]) {
+        sectionExampleCode += "-->\n";
+    }
+    sectionExampleCode += "\n\n";
+
     let content_infolist = "\n";
     if (meta["inhaltsfeld"]) {
         content_infolist += "<!-- infolists -->\n";
         content_infolist += translator.getPostContent(meta["inhaltsfeld"]);
         content_infolist += "\n\n";
         content_infolist = content_infolist.replace(/\*\*(.*)\*\*/g, "## $1");
-        content += content_infolist;
     }
+
+    let content = "\n";
+    content += `# ${title}\n`;
+    content += "\n";
+    content += `![${title}](./images/bauteil.jpg)\n`;
+    content += "\n";
+    content += "## Beschreibung\n";
+    content += "\n";
+    content += content_description;
+    content += sectionExampleCode;
+    content += content_infolist;
 
     // console.log("\ncontent:\n", content);
     // convert to markdown
@@ -136,9 +168,9 @@ function buildPost(data) {
 
         // all content-parts as separate parameters
         // this allows us to build the md file from the json struct as we want...
-        content_description:content_description,
+        content_description: content_description,
         example_code: example_code,
-        content_infolist:content_infolist,
+        content_infolist: content_infolist,
 
         // particularly useful values for all sorts of things
         type: data.childValue("post_type"),
@@ -156,7 +188,9 @@ function buildPost(data) {
 }
 
 function getPostDate(data) {
-    const date = luxon.DateTime.fromRFC2822(data.childValue('pubDate'), { zone: shared.config.timezone });
+    const date = luxon.DateTime.fromRFC2822(data.childValue("pubDate"), {
+        zone: shared.config.timezone,
+    });
     return date.isValid ? date : undefined;
 }
 
@@ -177,25 +211,25 @@ function getPostMeta(data) {
 }
 
 function getPostMetaValue(data, key) {
-    const metas = data.children('postmeta');
-    const meta = metas.find((meta) => meta.childValue('meta_key') === key);
-    return meta ? meta.childValue('meta_value') : undefined;
+    const metas = data.children("postmeta");
+    const meta = metas.find((meta) => meta.childValue("meta_key") === key);
+    return meta ? meta.childValue("meta_value") : undefined;
 }
 
 function collectAttachedImages(allPostData) {
-    const images = getItemsOfType(allPostData, 'attachment')
+    const images = getItemsOfType(allPostData, "attachment")
         // filter to certain image file types
         .filter((attachment) => {
-            const url = attachment.childValue('attachment_url');
-            return url && (/\.(gif|jpe?g|png|webp)(\?|$)/i).test(url);
+            const url = attachment.childValue("attachment_url");
+            return url && /\.(gif|jpe?g|png|webp)(\?|$)/i.test(url);
         })
         .map((attachment) => ({
-            id: attachment.childValue('post_id'),
-            postId: attachment.optionalChildValue('post_parent') ?? 'nope', // may not exist (cover image in a squarespace export, for example)
-            url: attachment.childValue('attachment_url')
+            id: attachment.childValue("post_id"),
+            postId: attachment.optionalChildValue("post_parent") ?? "nope", // may not exist (cover image in a squarespace export, for example)
+            url: attachment.childValue("attachment_url"),
         }));
 
-    console.log(images.length + ' attached images found.');
+    console.log(images.length + " attached images found.");
     return images;
 }
 
@@ -203,33 +237,39 @@ function collectScrapedImages(allPostData, postTypes) {
     const images = [];
     postTypes.forEach((postType) => {
         getItemsOfType(allPostData, postType).forEach((postData) => {
-            const postId = postData.childValue('post_id');
-            
-            const postContent = postData.childValue('encoded');
-            const scrapedUrls = [...postContent.matchAll(/<img(?=\s)[^>]+?(?<=\s)src="(.+?)"[^>]*>/gi)].map((match) => match[1]);
+            const postId = postData.childValue("post_id");
+
+            const postContent = postData.childValue("encoded");
+            const scrapedUrls = [
+                ...postContent.matchAll(
+                    /<img(?=\s)[^>]+?(?<=\s)src="(.+?)"[^>]*>/gi
+                ),
+            ].map((match) => match[1]);
             scrapedUrls.forEach((scrapedUrl) => {
                 let url;
                 if (isAbsoluteUrl(scrapedUrl)) {
                     url = scrapedUrl;
                 } else {
-                    const postLink = postData.childValue('link');
+                    const postLink = postData.childValue("link");
                     if (isAbsoluteUrl(postLink)) {
                         url = new URL(scrapedUrl, postLink).href;
                     } else {
-                        throw new Error(`Unable to determine absolute URL from scraped image URL '${scrapedUrl}' and post link URL '${postLink}'.`);
+                        throw new Error(
+                            `Unable to determine absolute URL from scraped image URL '${scrapedUrl}' and post link URL '${postLink}'.`
+                        );
                     }
                 }
 
                 images.push({
-                    id: 'nope', // scraped images don't have an id
+                    id: "nope", // scraped images don't have an id
                     postId,
-                    url
+                    url,
                 });
             });
         });
     });
 
-    console.log(images.length + ' images scraped from post body content.');
+    console.log(images.length + " images scraped from post body content.");
     return images;
 }
 
@@ -272,8 +312,8 @@ function populateFrontmatter(posts) {
     posts.forEach((post) => {
         post.frontmatter = {};
         shared.config.frontmatterFields.forEach((field) => {
-            const [key, alias] = field.split(':');
-            const [frontmatterGetterKey, subKey] = key.split('.')
+            const [key, alias] = field.split(":");
+            const [frontmatterGetterKey, subKey] = key.split(".");
             let frontmatterGetter = frontmatter[frontmatterGetterKey];
             if (!frontmatterGetter) {
                 throw `Could not find a frontmatter getter named "${frontmatterGetterKey}".`;
@@ -306,5 +346,5 @@ function prioritizePostType(postTypes, postType) {
 }
 
 function isAbsoluteUrl(url) {
-    return (/^https?:\/\//i).test(url);
+    return /^https?:\/\//i.test(url);
 }
